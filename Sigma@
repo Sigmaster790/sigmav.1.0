@@ -12,10 +12,13 @@ local selectedPlayer = nil
 local espEnabled = false
 local hitboxEnabled = false
 local espObjects = {}
-local hitboxObjects = {}
+local hitboxObjects = nil
 
 -- Variable para Infinite Jump
 local infiniteJumpEnabled = false
+local jumpConnection = nil
+local canJump = true
+local jumpCooldown = 0.1 -- Reducido para mejor respuesta
 
 -- Variables para Aimbot
 local aimbotEnabled = false
@@ -29,9 +32,160 @@ local aimbotSettings = {
     LockPart = "Head"
 }
 
--- Variables para Infinite Jump y Noclip
+-- Variable para Click Teleport
+local clickTeleportLoaded = false
+local clickTeleportEnabled = false
+local mouse = player:GetMouse()
+local clickConnection = nil
+
+-- Variables para ESP
+local espStorage = nil
+local espConnections = {}
+
+-- Configuración del ESP
+local FillColor = Color3.fromRGB(175,25,255)
+local DepthMode = "AlwaysOnTop"
+local FillTransparency = 0.5
+local OutlineColor = Color3.fromRGB(255,255,255)
+local OutlineTransparency = 0
+
+-- Variables para Noclip
 local noclipEnabled = false
-local noclipConnection = nil
+local Noclip = nil
+local Clip = nil
+
+-- Variables para Fly
+local flyEnabled = false
+local flyConnection = nil
+local flySpeed = 50
+
+-- Variables para Hitbox
+local hitboxSize = 20
+local hitboxConnection = nil
+
+-- Variables para WalkSpeed
+local walkSpeedEnabled = false
+local walkSpeedValue = 16
+local defaultWalkSpeed = 16
+local walkSpeedConnection = nil
+
+-- Variables para JumpPower
+local jumpPowerEnabled = false
+local jumpPowerValue = 50
+local defaultJumpPower = 50
+local jumpPowerConnection = nil
+
+-- Variables para Name ESP
+local nameEspEnabled = false
+local espConnection = nil
+
+-- Variables para Infinite Yield
+local infiniteYieldEnabled = false
+local infiniteYieldLoaded = false
+
+-- Variables para Bang
+local bangEnabled = false
+local bangConnection = nil
+local bangTarget = nil
+local bangDistance = 5 -- Distancia por defecto
+
+-- Añadir variables globales para el sistema de tracers
+local on = false -- Variable de control para los tracers
+local Box_Color = Color3.fromRGB(0, 255, 50) -- Color fijo
+local Box_Thickness = 1.4
+local Box_Transparency = 1
+local Tracers = true
+local Tracer_Color = Color3.fromRGB(0, 255, 50) -- Color fijo
+local Tracer_Thickness = 1.4
+local Tracer_Transparency = 1
+local Autothickness = false
+local Team_Check = false
+local red = Color3.fromRGB(227, 52, 52)
+local green = Color3.fromRGB(88, 217, 24)
+
+-- Función para crear slider (para reutilizar código)
+local function createSlider(option, sectionFrame, yPos)
+    local sliderFrame = Instance.new("Frame")
+    sliderFrame.Size = UDim2.new(1, -10, 0, 50)
+    sliderFrame.Position = UDim2.new(0, 5, 0, yPos)
+    sliderFrame.BackgroundTransparency = 1
+    sliderFrame.Parent = sectionFrame
+
+    local sliderLabel = Instance.new("TextLabel")
+    sliderLabel.Size = UDim2.new(1, 0, 0, 20)
+    sliderLabel.BackgroundTransparency = 1
+    sliderLabel.Text = option.text .. ": " .. option.default
+    sliderLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    sliderLabel.TextSize = 14
+    sliderLabel.Font = Enum.Font.GothamSemibold
+    sliderLabel.Parent = sliderFrame
+
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Size = UDim2.new(1, 0, 0, 4)
+    sliderBg.Position = UDim2.new(0, 0, 0.7, 0)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    sliderBg.Parent = sliderFrame
+
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new((option.default - option.min) / (option.max - option.min), 0, 1, 0)
+    sliderFill.BackgroundColor3 = Color3.fromRGB(100, 60, 180)
+    sliderFill.Parent = sliderBg
+
+    local sliderButton = Instance.new("TextButton")
+    sliderButton.Size = UDim2.new(0, 12, 0, 12)
+    sliderButton.Position = UDim2.new((option.default - option.min) / (option.max - option.min), -6, 0.5, -6)
+    sliderButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    sliderButton.Text = ""
+    sliderButton.Parent = sliderBg
+
+    local dragging = false
+
+    sliderButton.MouseButton1Down:Connect(function()
+        dragging = true
+    end)
+
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local mousePos = UserInputService:GetMouseLocation()
+            local relativePos = mousePos.X - sliderBg.AbsolutePosition.X
+            local percentage = math.clamp(relativePos / sliderBg.AbsoluteSize.X, 0, 1)
+            local value = math.floor(option.min + (percentage * (option.max - option.min)))
+            
+            sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+            sliderButton.Position = UDim2.new(percentage, -6, 0.5, -6)
+            sliderLabel.Text = option.text .. ": " .. value
+            
+            if option.name == "flySpeed" then
+                flySpeed = value
+            elseif option.name == "hitboxSize" then
+                hitboxSize = value
+                if hitboxEnabled then
+                    for _, v in pairs(Players:GetPlayers()) do
+                        if v ~= player then
+                            pcall(function()
+                                if v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                                    v.Character.HumanoidRootPart.Size = Vector3.new(value, value, value)
+                                end
+                            end)
+                        end
+                    end
+                end
+            elseif option.name == "walkSpeedValue" then
+                walkSpeedValue = value
+            elseif option.name == "jumpPowerValue" then
+                jumpPowerValue = value
+            end
+        end
+    end)
+    
+    return sliderFrame
+end
 
 local function createNewGui()
     -- Eliminar GUI existente si hay alguna
@@ -87,13 +241,17 @@ local function createNewGui()
     -- Crear secciones
     local sections = {
         {
-            name = "Movement",
+            name = "Main",
             options = {
-                {type = "slider", name = "walkSpeed", text = "WalkSpeed", min = 16, max = 100, default = 16},
-                {type = "slider", name = "jumpPower", text = "JumpPower", min = 16, max = 100, default = 50},
+                {type = "toggle", name = "walkspeed", text = "WalkSpeed"},
+                {type = "slider", name = "walkSpeedValue", text = "Speed Value", min = 16, max = 500, default = 16},
+                {type = "toggle", name = "jumppower", text = "JumpPower"},
+                {type = "slider", name = "jumpPowerValue", text = "Jump Value", min = 50, max = 500, default = 50},
                 {type = "toggle", name = "infiniteJump", text = "Infinite Jump"},
                 {type = "toggle", name = "noclip", text = "Noclip"},
-                {type = "toggle", name = "flight", text = "Flight"}
+                {type = "toggle", name = "fly", text = "Fly"},
+                {type = "slider", name = "flySpeed", text = "Fly Speed", min = 10, max = 200, default = 50},
+                {type = "toggle", name = "infiniteYield", text = "Infinite Yield"}
             }
         },
         {
@@ -101,14 +259,20 @@ local function createNewGui()
             options = {
                 {type = "toggle", name = "aimbot", text = "Aimbot"},
                 {type = "toggle", name = "esp", text = "ESP"},
-                {type = "toggle", name = "hitbox", text = "Hitbox"}
+                {type = "toggle", name = "nameEsp", text = "Name ESP"},
+                {type = "toggle", name = "hitbox", text = "Hitbox"},
+                {type = "slider", name = "hitboxSize", text = "Hitbox Size", min = 2, max = 100, default = 20},
+                {type = "toggle", name = "boxTracer", text = "Box Tracers"}
             }
         },
         {
             name = "Teleport",
             options = {
-                {type = "dropdown", name = "playerSelect", text = "Select Player"},
-                {type = "button", name = "teleport", text = "Teleport to Player"}
+                {type = "toggle", name = "clickTeleport", text = "Click Teleport"},
+                {type = "button", name = "teleport", text = "Teleport to Player"},
+                {type = "toggle", name = "bang", text = "Bang"},
+                {type = "slider", name = "bangDistance", text = "Bang Distance", min = 1, max = 20, default = 5},
+                {type = "dropdown", name = "playerSelect", text = "Select Player"}
             }
         }
     }
@@ -172,6 +336,42 @@ local function createNewGui()
                             end)
                         end
                     end)
+                elseif option.name == "infiniteJump" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        infiniteJumpEnabled = enabled
+                        
+                        if enabled then
+                            -- Desconectar conexión existente si hay alguna
+                            if jumpConnection then
+                                jumpConnection:Disconnect()
+                            end
+                            
+                            -- Crear nueva conexión
+                            jumpConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                                if not gameProcessed and input.KeyCode == Enum.KeyCode.Space then
+                                    -- Bucle de salto mientras la barra espaciadora esté presionada
+                                    while UserInputService:IsKeyDown(Enum.KeyCode.Space) and infiniteJumpEnabled do
+                                        if character and humanoid and canJump then
+                                            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                                            canJump = false
+                                            task.wait(jumpCooldown)
+                                            canJump = true
+                                        end
+                                        task.wait()
+                                    end
+                                end
+                            end)
+                        else
+                            -- Desconectar la conexión cuando se desactiva
+                            if jumpConnection then
+                                jumpConnection:Disconnect()
+                                jumpConnection = nil
+                            end
+                            canJump = true
+                        end
+                    end)
                 elseif option.name == "esp" then
                     toggle.MouseButton1Click:Connect(function()
                         local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
@@ -179,18 +379,215 @@ local function createNewGui()
                         espEnabled = enabled
                         
                         if enabled then
-                            -- Activar ESP
-                            for _, p in ipairs(Players:GetPlayers()) do
-                                if p ~= Players.LocalPlayer and p.Character then
-                                    createESP(p)
+                            -- Crear storage si no existe
+                            if not espStorage then
+                                espStorage = Instance.new("Folder")
+                                espStorage.Name = "Highlight_Storage"
+                                espStorage.Parent = game:FindService("CoreGui")
+                            end
+                            
+                            -- Función para crear highlight
+                            local function createHighlight(plr)
+                                if plr == Players.LocalPlayer then return end
+                                
+                                -- Eliminar highlight existente si hay
+                                if espStorage:FindFirstChild(plr.Name) then
+                                    espStorage[plr.Name]:Destroy()
+                                end
+                                
+                                local highlight = Instance.new("Highlight")
+                                highlight.Name = plr.Name
+                                highlight.FillColor = FillColor
+                                highlight.DepthMode = DepthMode
+                                highlight.FillTransparency = FillTransparency
+                                highlight.OutlineColor = OutlineColor
+                                highlight.OutlineTransparency = OutlineTransparency
+                                highlight.Parent = espStorage
+                                
+                                if plr.Character then
+                                    highlight.Adornee = plr.Character
+                                end
+                                
+                                -- Conectar CharacterAdded
+                                espConnections[plr] = plr.CharacterAdded:Connect(function(char)
+                                    if espEnabled then
+                                        highlight.Adornee = char
+                                    end
+                                end)
+                            end
+                            
+                            -- Crear highlights para jugadores existentes
+                            for _, plr in pairs(Players:GetPlayers()) do
+                                createHighlight(plr)
+                            end
+                            
+                            -- Conectar para nuevos jugadores
+                            espConnections["PlayerAdded"] = Players.PlayerAdded:Connect(function(plr)
+                                if espEnabled then
+                                    createHighlight(plr)
+                                end
+                            end)
+                            
+                            -- Conectar para jugadores que salen
+                            espConnections["PlayerRemoving"] = Players.PlayerRemoving:Connect(function(plr)
+                                if espStorage:FindFirstChild(plr.Name) then
+                                    espStorage[plr.Name]:Destroy()
+                                end
+                                if espConnections[plr] then
+                                    espConnections[plr]:Disconnect()
+                                    espConnections[plr] = nil
+                                end
+                            end)
+                            
+                        else
+                            -- Limpiar ESP
+                            if espStorage then
+                                espStorage:Destroy()
+                                espStorage = nil
+                            end
+                            
+                            -- Desconectar todos los eventos
+                            for _, connection in pairs(espConnections) do
+                                if typeof(connection) == "RBXScriptConnection" then
+                                    connection:Disconnect()
                                 end
                             end
-                        else
-                            -- Desactivar ESP
-                            for _, esp in ipairs(espObjects) do
-                                esp:Destroy()
+                            espConnections = {}
+                        end
+                    end)
+                elseif option.name == "clickTeleport" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        clickTeleportEnabled = enabled
+                        
+                        if enabled then
+                            -- Desconectar conexión existente si hay alguna
+                            if clickConnection then
+                                clickConnection:Disconnect()
                             end
-                            espObjects = {}
+                            
+                            -- Crear nueva conexión
+                            clickConnection = mouse.Button1Down:Connect(function()
+                                if clickTeleportEnabled and character and humanoidRootPart then
+                                    local targetPos = mouse.Hit.Position
+                                    humanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+                                end
+                            end)
+                        else
+                            -- Desconectar la conexión cuando se desactiva
+                            if clickConnection then
+                                clickConnection:Disconnect()
+                                clickConnection = nil
+                            end
+                        end
+                    end)
+                elseif option.name == "noclip" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        noclipEnabled = enabled
+                        
+                        if enabled then
+                            -- Iniciar Noclip
+                            Clip = false
+                            Noclip = RunService.Stepped:Connect(function()
+                                if character and noclipEnabled then
+                                    for _, part in pairs(character:GetDescendants()) do
+                                        if part:IsA("BasePart") then
+                                            part.CanCollide = false
+                                        end
+                                    end
+                                end
+                            end)
+                        else
+                            -- Detener Noclip
+                            if Noclip then
+                                Noclip:Disconnect()
+                                Noclip = nil
+                            end
+                            
+                            -- Restaurar colisiones
+                            if character then
+                                for _, part in pairs(character:GetDescendants()) do
+                                    if part:IsA("BasePart") then
+                                        part.CanCollide = true
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                elseif option.name == "fly" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        flyEnabled = enabled
+                        
+                        if enabled then
+                            -- Iniciar Fly
+                            local bp = Instance.new("BodyPosition")
+                            bp.Parent = humanoidRootPart
+                            bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                            bp.P = 10000
+                            bp.D = 100
+                            
+                            local bg = Instance.new("BodyGyro")
+                            bg.Parent = humanoidRootPart
+                            bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+                            bg.P = 10000
+                            bg.D = 100
+                            
+                            flyConnection = RunService.Heartbeat:Connect(function()
+                                if not flyEnabled then return end
+                                
+                                bg.CFrame = CFrame.new(humanoidRootPart.Position, humanoidRootPart.Position + workspace.CurrentCamera.CFrame.LookVector)
+                                
+                                local moveDirection = Vector3.new()
+                                if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+                                    moveDirection = moveDirection + workspace.CurrentCamera.CFrame.LookVector
+                                end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+                                    moveDirection = moveDirection - workspace.CurrentCamera.CFrame.LookVector
+                                end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+                                    moveDirection = moveDirection - workspace.CurrentCamera.CFrame.RightVector
+                                end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+                                    moveDirection = moveDirection + workspace.CurrentCamera.CFrame.RightVector
+                                end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+                                    moveDirection = moveDirection + Vector3.new(0, 1, 0)
+                                end
+                                if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
+                                    moveDirection = moveDirection - Vector3.new(0, 1, 0)
+                                end
+                                
+                                if moveDirection.Magnitude > 0 then
+                                    moveDirection = moveDirection.Unit * flySpeed
+                                end
+                                
+                                bp.Position = humanoidRootPart.Position + moveDirection
+                            end)
+                            
+                            -- Desactivar la gravedad
+                            humanoidRootPart.Anchored = false
+                            
+                        else
+                            -- Detener Fly
+                            if flyConnection then
+                                flyConnection:Disconnect()
+                                flyConnection = nil
+                            end
+                            
+                            -- Limpiar BodyPosition y BodyGyro
+                            for _, v in pairs(humanoidRootPart:GetChildren()) do
+                                if v:IsA("BodyPosition") or v:IsA("BodyGyro") then
+                                    v:Destroy()
+                                end
+                            end
+                            
+                            -- Restaurar gravedad
+                            humanoidRootPart.Anchored = false
                         end
                     end)
                 elseif option.name == "hitbox" then
@@ -200,27 +597,493 @@ local function createNewGui()
                         hitboxEnabled = enabled
                         
                         if enabled then
-                            -- Activar Hitbox
-                            for _, p in ipairs(Players:GetPlayers()) do
-                                if p ~= Players.LocalPlayer and p.Character then
-                                    createHitbox(p)
+                            -- Iniciar Hitbox
+                            hitboxConnection = RunService.RenderStepped:Connect(function()
+                                for _, v in pairs(Players:GetPlayers()) do
+                                    if v ~= player then
+                                        pcall(function()
+                                            if v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                                                local hrp = v.Character.HumanoidRootPart
+                                                hrp.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                                                hrp.Transparency = 0.7
+                                                hrp.BrickColor = BrickColor.new("Really red")
+                                                hrp.Material = Enum.Material.Neon
+                                                hrp.CanCollide = false
+                                            end
+                                        end)
+                                    end
+                                end
+                            end)
+                        else
+                            -- Detener Hitbox
+                            if hitboxConnection then
+                                hitboxConnection:Disconnect()
+                                hitboxConnection = nil
+                            end
+                            
+                            -- Restaurar tamaños originales
+                            for _, v in pairs(Players:GetPlayers()) do
+                                if v ~= player then
+                                    pcall(function()
+                                        if v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                                            local hrp = v.Character.HumanoidRootPart
+                                            hrp.Size = Vector3.new(2, 2, 1)
+                                            hrp.Transparency = 1
+                                            hrp.BrickColor = BrickColor.new("Medium stone grey")
+                                            hrp.Material = Enum.Material.Plastic
+                                            hrp.CanCollide = false
+                                        end
+                                    end)
                                 end
                             end
-                        else
-                            -- Desactivar Hitbox
-                            for _, hitbox in ipairs(hitboxObjects) do
-                                hitbox:Destroy()
+                        end
+                    end)
+                elseif option.name == "walkspeed" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        walkSpeedEnabled = enabled
+                        
+                        if enabled then
+                            -- Activar WalkSpeed
+                            if walkSpeedConnection then
+                                walkSpeedConnection:Disconnect()
                             end
-                            hitboxObjects = {}
+                            
+                            walkSpeedConnection = RunService.Heartbeat:Connect(function()
+                                if character and humanoid then
+                                    humanoid.WalkSpeed = walkSpeedValue
+                                end
+                            end)
+                        else
+                            -- Desactivar WalkSpeed
+                            if walkSpeedConnection then
+                                walkSpeedConnection:Disconnect()
+                                walkSpeedConnection = nil
+                            end
+                            
+                            -- Restaurar velocidad por defecto
+                            if character and humanoid then
+                                humanoid.WalkSpeed = defaultWalkSpeed
+                            end
+                        end
+                    end)
+                elseif option.name == "jumppower" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        jumpPowerEnabled = enabled
+                        
+                        if enabled then
+                            -- Activar JumpPower
+                            if jumpPowerConnection then
+                                jumpPowerConnection:Disconnect()
+                            end
+                            
+                            jumpPowerConnection = RunService.Heartbeat:Connect(function()
+                                if character and humanoid then
+                                    humanoid.JumpPower = jumpPowerValue
+                                end
+                            end)
+                        else
+                            -- Desactivar JumpPower
+                            if jumpPowerConnection then
+                                jumpPowerConnection:Disconnect()
+                                jumpPowerConnection = nil
+                            end
+                            
+                            -- Restaurar JumpPower por defecto
+                            if character and humanoid then
+                                humanoid.JumpPower = defaultJumpPower
+                            end
+                        end
+                    end)
+                elseif option.name == "nameEsp" then
+                    toggle.MouseButton1Click:Connect(function()
+                        nameEspEnabled = not nameEspEnabled
+                        toggle.BackgroundColor3 = nameEspEnabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        
+                        if nameEspEnabled then
+                            -- Activar ESP
+                            if espConnection then
+                                espConnection:Disconnect()
+                            end
+                            
+                            espConnection = game:GetService("RunService").RenderStepped:Connect(function()
+                                for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+                                    if player ~= game:GetService("Players").LocalPlayer then
+                                        if player.Character and player.Character:FindFirstChild("Head") then
+                                            -- Verificar si ya existe una etiqueta
+                                            local existingESP = player.Character.Head:FindFirstChild("ESP_Name")
+                                            
+                                            if not existingESP then
+                                                -- Crear nueva etiqueta
+                                                local esp = Instance.new("BillboardGui")
+                                                esp.Name = "ESP_Name"
+                                                esp.AlwaysOnTop = true
+                                                esp.Size = UDim2.new(0, 100, 0, 30)
+                                                esp.StudsOffset = Vector3.new(0, 2, 0)
+                                                esp.Parent = player.Character.Head
+                                                
+                                                local text = Instance.new("TextLabel")
+                                                text.BackgroundTransparency = 1
+                                                text.Size = UDim2.new(1, 0, 1, 0)
+                                                text.Text = player.Name
+                                                text.TextColor3 = Color3.fromRGB(255, 255, 255)
+                                                text.TextStrokeTransparency = 0
+                                                text.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                                                text.Font = Enum.Font.GothamBold
+                                                text.TextSize = 14
+                                                text.Parent = esp
+                                            end
+                                        end
+                                    end
+                                end
+                            end)
+                        else
+                            -- Desactivar ESP
+                            if espConnection then
+                                espConnection:Disconnect()
+                                espConnection = nil
+                            end
+                            
+                            -- Remover todas las etiquetas existentes inmediatamente
+                            for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+                                if player.Character then
+                                    local head = player.Character:FindFirstChild("Head")
+                                    if head then
+                                        local esp = head:FindFirstChild("ESP_Name")
+                                        if esp then
+                                            esp:Destroy()
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            -- Asegurarse de que las etiquetas se eliminen para nuevos personajes
+                            game:GetService("Players").PlayerAdded:Connect(function(player)
+                                if not nameEspEnabled then
+                                    player.CharacterAdded:Connect(function(character)
+                                        local head = character:WaitForChild("Head")
+                                        local esp = head:FindFirstChild("ESP_Name")
+                                        if esp then
+                                            esp:Destroy()
+                                        end
+                                    end)
+                                end
+                            end)
+                        end
+                    end)
+                elseif option.name == "infiniteYield" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        infiniteYieldEnabled = enabled
+                        
+                        if enabled then
+                            if not infiniteYieldLoaded then
+                                -- Cargar Infinite Yield
+                                loadstring(game:HttpGet('https://raw.githubusercontent.com/DarkNetworks/Infinite-Yield/main/latest.lua'))()
+                                infiniteYieldLoaded = true
+                            end
+                        end
+                    end)
+                elseif option.name == "bang" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        bangEnabled = enabled
+                        
+                        if enabled then
+                            -- Iniciar Bang
+                            bangConnection = RunService.Heartbeat:Connect(function()
+                                if bangEnabled and selectedPlayer and selectedPlayer.Character then
+                                    local targetRoot = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                    if targetRoot and character and humanoidRootPart then
+                                        -- Obtener la dirección hacia donde mira el objetivo
+                                        local targetCFrame = targetRoot.CFrame
+                                        -- Reducir la distancia a 0.05 para estar muy cerca
+                                        local behind = targetCFrame * CFrame.new(0, 0, 0.05)
+                                        
+                                        -- Teleportar detrás del objetivo
+                                        humanoidRootPart.CFrame = behind
+                                        
+                                        -- Hacer que nuestro personaje mire hacia el objetivo
+                                        humanoidRootPart.CFrame = CFrame.lookAt(
+                                            humanoidRootPart.Position,
+                                            targetRoot.Position
+                                        )
+                                    end
+                                end
+                            end)
+                        else
+                            -- Detener Bang
+                            if bangConnection then
+                                bangConnection:Disconnect()
+                                bangConnection = nil
+                            end
+                        end
+                    end)
+                elseif option.name == "bangDistance" then
+                    local slider = createSlider(option, sectionFrame, yPos)
+                    slider.MouseButton1Click:Connect(function(input)
+                        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                            local relativeX = input.Position.X - slider.AbsolutePosition.X
+                            local percentage = math.clamp(relativeX / slider.AbsoluteSize.X, 0, 1)
+                            bangDistance = option.min + (percentage * (option.max - option.min))
+                        end
+                    end)
+                    yPos = yPos + 55
+                elseif option.name == "boxTracer" then
+                    toggle.MouseButton1Click:Connect(function()
+                        local enabled = toggle.BackgroundColor3 == Color3.fromRGB(30, 30, 30)
+                        toggle.BackgroundColor3 = enabled and Color3.fromRGB(100, 60, 180) or Color3.fromRGB(30, 30, 30)
+                        on = enabled
+                        
+                        if enabled then
+                            -- Función para crear nuevas líneas
+                            local function NewLine()
+                                local line = Drawing.new("Line")
+                                line.Visible = false
+                                line.From = Vector2.new(0, 0)
+                                line.To = Vector2.new(1, 1)
+                                line.Color = Box_Color
+                                line.Thickness = Box_Thickness
+                                line.Transparency = Box_Transparency
+                                return line
+                            end
+
+                            -- Crear ESP para jugadores existentes
+                            for _, v in pairs(Players:GetPlayers()) do
+                                if v ~= player then
+                                    local lines = {
+                                        line1 = NewLine(),
+                                        line2 = NewLine(),
+                                        line3 = NewLine(),
+                                        line4 = NewLine(),
+                                        line5 = NewLine(),
+                                        line6 = NewLine(),
+                                        line7 = NewLine(),
+                                        line8 = NewLine(),
+                                        line9 = NewLine(),
+                                        line10 = NewLine(),
+                                        line11 = NewLine(),
+                                        line12 = NewLine(),
+                                        Tracer = NewLine()
+                                    }
+
+                                    lines.Tracer.Color = Tracer_Color
+                                    lines.Tracer.Thickness = Tracer_Thickness
+                                    lines.Tracer.Transparency = Tracer_Transparency
+
+                                    local function ESP()
+                                        local connection
+                                        connection = RunService.RenderStepped:Connect(function()
+                                            if not on then 
+                                                connection:Disconnect()
+                                                for _, x in pairs(lines) do
+                                                    x.Visible = false
+                                                    x:Remove()
+                                                end
+                                                return 
+                                            end
+
+                                            if v.Character and v.Character:FindFirstChild("HumanoidRootPart") and v.Character:FindFirstChild("Head") then
+                                                local pos, vis = workspace.CurrentCamera:WorldToViewportPoint(v.Character.HumanoidRootPart.Position)
+                                                if vis then
+                                                    local Scale = v.Character.Head.Size.Y/2
+                                                    local Size = Vector3.new(2, 3, 1.5) * (Scale * 2)
+
+                                                    local Top1 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(-Size.X, Size.Y, -Size.Z)).p)
+                                                    local Top2 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(-Size.X, Size.Y, Size.Z)).p)
+                                                    local Top3 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(Size.X, Size.Y, Size.Z)).p)
+                                                    local Top4 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(Size.X, Size.Y, -Size.Z)).p)
+
+                                                    local Bottom1 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(-Size.X, -Size.Y, -Size.Z)).p)
+                                                    local Bottom2 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(-Size.X, -Size.Y, Size.Z)).p)
+                                                    local Bottom3 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(Size.X, -Size.Y, Size.Z)).p)
+                                                    local Bottom4 = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(Size.X, -Size.Y, -Size.Z)).p)
+
+                                                    -- Top Box
+                                                    lines.line1.From = Vector2.new(Top1.X, Top1.Y)
+                                                    lines.line1.To = Vector2.new(Top2.X, Top2.Y)
+
+                                                    lines.line2.From = Vector2.new(Top2.X, Top2.Y)
+                                                    lines.line2.To = Vector2.new(Top3.X, Top3.Y)
+
+                                                    lines.line3.From = Vector2.new(Top3.X, Top3.Y)
+                                                    lines.line3.To = Vector2.new(Top4.X, Top4.Y)
+
+                                                    lines.line4.From = Vector2.new(Top4.X, Top4.Y)
+                                                    lines.line4.To = Vector2.new(Top1.X, Top1.Y)
+
+                                                    -- Bottom Box
+                                                    lines.line5.From = Vector2.new(Bottom1.X, Bottom1.Y)
+                                                    lines.line5.To = Vector2.new(Bottom2.X, Bottom2.Y)
+
+                                                    lines.line6.From = Vector2.new(Bottom2.X, Bottom2.Y)
+                                                    lines.line6.To = Vector2.new(Bottom3.X, Bottom3.Y)
+
+                                                    lines.line7.From = Vector2.new(Bottom3.X, Bottom3.Y)
+                                                    lines.line7.To = Vector2.new(Bottom4.X, Bottom4.Y)
+
+                                                    lines.line8.From = Vector2.new(Bottom4.X, Bottom4.Y)
+                                                    lines.line8.To = Vector2.new(Bottom1.X, Bottom1.Y)
+
+                                                    -- Vertical Lines
+                                                    lines.line9.From = Vector2.new(Bottom1.X, Bottom1.Y)
+                                                    lines.line9.To = Vector2.new(Top1.X, Top1.Y)
+
+                                                    lines.line10.From = Vector2.new(Bottom2.X, Bottom2.Y)
+                                                    lines.line10.To = Vector2.new(Top2.X, Top2.Y)
+
+                                                    lines.line11.From = Vector2.new(Bottom3.X, Bottom3.Y)
+                                                    lines.line11.To = Vector2.new(Top3.X, Top3.Y)
+
+                                                    lines.line12.From = Vector2.new(Bottom4.X, Bottom4.Y)
+                                                    lines.line12.To = Vector2.new(Top4.X, Top4.Y)
+
+                                                    -- Tracer
+                                                    if Tracers then
+                                                        local trace = workspace.CurrentCamera:WorldToViewportPoint((v.Character.HumanoidRootPart.CFrame * CFrame.new(0, -Size.Y, 0)).p)
+                                                        lines.Tracer.From = Vector2.new(workspace.CurrentCamera.ViewportSize.X/2, workspace.CurrentCamera.ViewportSize.Y)
+                                                        lines.Tracer.To = Vector2.new(trace.X, trace.Y)
+                                                    end
+
+                                                    for _, x in pairs(lines) do
+                                                        x.Visible = true
+                                                    end
+                                                else 
+                                                    for _, x in pairs(lines) do
+                                                        x.Visible = false
+                                                    end
+                                                end
+                                            else 
+                                                for _, x in pairs(lines) do
+                                                    x.Visible = false
+                                                end
+                                            end
+                                        end)
+                                    end
+                                    
+                                    coroutine.wrap(ESP)()
+                                end
+                            end
+
+                            -- Manejar nuevos jugadores
+                            Players.PlayerAdded:Connect(function(newplr)
+                                if newplr ~= player then
+                                    -- Crear líneas para el nuevo jugador (mismo código que arriba)
+                                end
+                            end)
+                        else
+                            -- Desactivar todos los tracers
+                            on = false
                         end
                     end)
                 end
+            elseif option.type == "dropdown" then
+                local dropdownButton = Instance.new("TextButton")
+                dropdownButton.Size = UDim2.new(1, -10, 0, 30)
+                dropdownButton.Position = UDim2.new(0, 5, 0, yPos)
+                dropdownButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                dropdownButton.Text = "Select Player"
+                dropdownButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                dropdownButton.Font = Enum.Font.GothamSemibold
+                dropdownButton.TextSize = 14
+                dropdownButton.Parent = sectionFrame
+
+                local playerListFrame = Instance.new("ScrollingFrame")
+                playerListFrame.Size = UDim2.new(1, -10, 0, 100)
+                playerListFrame.Position = UDim2.new(0, 5, 0, yPos + 35)
+                playerListFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+                playerListFrame.BorderSizePixel = 0
+                playerListFrame.ScrollBarThickness = 4
+                playerListFrame.Visible = false
+                playerListFrame.Parent = sectionFrame
+
+                local function updatePlayerList()
+                    -- Limpiar lista actual
+                    for _, child in ipairs(playerListFrame:GetChildren()) do
+                        if child:IsA("TextButton") then
+                            child:Destroy()
+                        end
+                    end
+
+                    -- Agregar jugadores actuales
+                    local yOffset = 5
+                    for _, plr in ipairs(Players:GetPlayers()) do
+                        if plr ~= player then
+                            local playerButton = Instance.new("TextButton")
+                            playerButton.Size = UDim2.new(1, -10, 0, 25)
+                            playerButton.Position = UDim2.new(0, 5, 0, yOffset)
+                            playerButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+                            playerButton.Text = plr.Name
+                            playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                            playerButton.Font = Enum.Font.Gotham
+                            playerButton.TextSize = 14
+                            playerButton.Parent = playerListFrame
+
+                            playerButton.MouseButton1Click:Connect(function()
+                                selectedPlayer = plr
+                                dropdownButton.Text = plr.Name
+                                playerListFrame.Visible = false
+                            end)
+
+                            yOffset = yOffset + 30
+                        end
+                    end
+                    
+                    playerListFrame.CanvasSize = UDim2.new(0, 0, 0, yOffset)
+                end
+
+                dropdownButton.MouseButton1Click:Connect(function()
+                    playerListFrame.Visible = not playerListFrame.Visible
+                    if playerListFrame.Visible then
+                        updatePlayerList()
+                    end
+                end)
+
+                -- Actualizar lista cuando jugadores entran/salen
+                Players.PlayerAdded:Connect(function()
+                    if playerListFrame.Visible then
+                        updatePlayerList()
+                    end
+                end)
+
+                Players.PlayerRemoving:Connect(function(plr)
+                    if selectedPlayer == plr then
+                        selectedPlayer = nil
+                        dropdownButton.Text = "Select Player"
+                    end
+                    if playerListFrame.Visible then
+                        updatePlayerList()
+                    end
+                end)
+            elseif option.name == "teleport" then
+                local teleportButton = Instance.new("TextButton")
+                teleportButton.Size = UDim2.new(1, -10, 0, 30)
+                teleportButton.Position = UDim2.new(0, 5, 0, yPos)
+                teleportButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+                teleportButton.Text = "Teleport to Player"
+                teleportButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+                teleportButton.Font = Enum.Font.GothamSemibold
+                teleportButton.TextSize = 14
+                teleportButton.Parent = sectionFrame
+
+                teleportButton.MouseButton1Click:Connect(function()
+                    if selectedPlayer and selectedPlayer.Character then
+                        local targetHRP = selectedPlayer.Character:FindFirstChild("HumanoidRootPart")
+                        if targetHRP and character and humanoidRootPart then
+                            humanoidRootPart.CFrame = targetHRP.CFrame
+                        end
+                    end
+                end)
             elseif option.type == "slider" then
-                local sliderFrame = Instance.new("Frame")
-                sliderFrame.Size = UDim2.new(1, -10, 0, 50)
-                sliderFrame.Position = UDim2.new(0, 5, 0, yPos)
-                sliderFrame.BackgroundTransparency = 1
-                sliderFrame.Parent = sectionFrame
+                if option.name == "flySpeed" or option.name == "hitboxSize" or option.name == "walkSpeedValue" or option.name == "jumpPowerValue" then
+                    local slider = createSlider(option, sectionFrame, yPos)
+                    yPos = yPos + 55
+                end
             end
             yPos = yPos + 40
         end
@@ -271,55 +1134,103 @@ local function createNewGui()
         end
     end)
 
-    return mainFrame
-end
+    -- Combat Section
+    local combatSection = Instance.new("Frame")
+    combatSection.Size = UDim2.new(1, -20, 1, -60)
+    combatSection.Position = UDim2.new(0, 10, 0, 50)
+    combatSection.BackgroundTransparency = 1
+    combatSection.Visible = false
+    combatSection.Parent = mainFrame
 
-local function startFlying()
-    if flying then return end
-    flying = true
+    -- Aimbot Button
+    local aimbotButton = Instance.new("TextButton")
+    aimbotButton.Size = UDim2.new(0, 150, 0, 30)
+    aimbotButton.Position = UDim2.new(0, 10, 0, 10)
+    aimbotButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+    aimbotButton.Text = "Aimbot: OFF"
+    aimbotButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    aimbotButton.Font = Enum.Font.GothamSemibold
+    aimbotButton.TextSize = 14
+    aimbotButton.Parent = combatSection
 
-    local bodyGyro = Instance.new("BodyGyro")
-    bodyGyro.P = 9e4
-    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-    bodyGyro.CFrame = humanoidRootPart.CFrame
-    bodyGyro.Parent = humanoidRootPart
+    aimbotButton.MouseButton1Click:Connect(function()
+        aimbotEnabled = not aimbotEnabled
+        aimbotButton.Text = "Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
+        aimbotButton.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(0, 120, 215)
+        
+        if aimbotEnabled then
+            -- Cargar el script de Aimbot
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/Exunys/Aimbot-V2/main/Resources/Scripts/Main.lua"))()
+            getgenv().Aimbot.Settings.Enabled = true
+        else
+            -- Desactivar Aimbot
+            pcall(function()
+                getgenv().Aimbot.Settings.Enabled = false
+                getgenv().Aimbot.Functions:Exit()
+            end)
+        end
+    end)
 
-    local bodyVelocity = Instance.new("BodyVelocity")
-    bodyVelocity.Velocity = Vector3.new(0, 0.1, 0)
-    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-    bodyVelocity.Parent = humanoidRootPart
+    -- Hitbox Button
+    local hitboxButton = Instance.new("TextButton")
+    hitboxButton.Size = UDim2.new(0, 150, 0, 30)
+    hitboxButton.Position = UDim2.new(0, 10, 0, 330)
+    hitboxButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
+    hitboxButton.Text = "Hitbox: OFF"
+    hitboxButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    hitboxButton.Font = Enum.Font.GothamSemibold
+    hitboxButton.TextSize = 14
+    hitboxButton.Parent = combatSection
 
-    while flying and humanoidRootPart and humanoidRootPart.Parent do
-        humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
-        local lookVector = workspace.CurrentCamera.CFrame.LookVector
-        local move = Vector3.new(
-            UserInputService:IsKeyDown(Enum.KeyCode.A) and -1 or (UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0),
-            UserInputService:IsKeyDown(Enum.KeyCode.Space) and 1 or (UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and -1 or 0),
-            UserInputService:IsKeyDown(Enum.KeyCode.W) and -1 or (UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0)
-        )
-        bodyVelocity.Velocity = (lookVector * -move.Z + workspace.CurrentCamera.CFrame.RightVector * move.X + Vector3.new(0, 1, 0) * move.Y) * speed
-        bodyGyro.CFrame = workspace.CurrentCamera.CFrame
-        RunService.Stepped:Wait()
-    end
-
-    if bodyGyro then bodyGyro:Destroy() end
-    if bodyVelocity then bodyVelocity:Destroy() end
-    if humanoid and humanoid.Parent then
-        humanoid:ChangeState(Enum.HumanoidStateType.Landed)
-    end
-end
-
-local function stopFlying()
-    flying = false
-    if humanoid and humanoid.Parent then
-        humanoid:ChangeState(Enum.HumanoidStateType.Landed)
-        -- Eliminar BodyGyro y BodyVelocity si existen
-        for _, child in ipairs(humanoidRootPart:GetChildren()) do
-            if child:IsA("BodyGyro") or child:IsA("BodyVelocity") then
-                child:Destroy()
+    hitboxButton.MouseButton1Click:Connect(function()
+        hitboxEnabled = not hitboxEnabled
+        hitboxButton.Text = "Hitbox: " .. (hitboxEnabled and "ON" or "OFF")
+        hitboxButton.BackgroundColor3 = hitboxEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(0, 120, 215)
+        
+        if hitboxEnabled then
+            -- Iniciar Hitbox
+            hitboxConnection = RunService.RenderStepped:Connect(function()
+                for _, v in pairs(Players:GetPlayers()) do
+                    if v ~= player then
+                        pcall(function()
+                            if v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                                local hrp = v.Character.HumanoidRootPart
+                                hrp.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                                hrp.Transparency = 0.7
+                                hrp.BrickColor = BrickColor.new("Really red")
+                                hrp.Material = Enum.Material.Neon
+                                hrp.CanCollide = false
+                            end
+                        end)
+                    end
+                end
+            end)
+        else
+            -- Detener Hitbox
+            if hitboxConnection then
+                hitboxConnection:Disconnect()
+                hitboxConnection = nil
+            end
+            
+            -- Restaurar tamaños originales
+            for _, v in pairs(Players:GetPlayers()) do
+                if v ~= player then
+                    pcall(function()
+                        if v.Character and v.Character:FindFirstChild("HumanoidRootPart") then
+                            local hrp = v.Character.HumanoidRootPart
+                            hrp.Size = Vector3.new(2, 2, 1)
+                            hrp.Transparency = 1
+                            hrp.BrickColor = BrickColor.new("Medium stone grey")
+                            hrp.Material = Enum.Material.Plastic
+                            hrp.CanCollide = false
+                        end
+                    end)
+                end
             end
         end
-    end
+    end)
+
+    return mainFrame
 end
 
 local function updatePlayerList(playerListFrame, playerDropdown)
@@ -335,7 +1246,7 @@ local function updatePlayerList(playerListFrame, playerDropdown)
             playerButton.Size = UDim2.new(1, 0, 0, 30)
             playerButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
             playerButton.Text = p.Name
-            playerButton.TextColor3 = Color3.new(1, 1, 1)
+            playerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
             playerButton.Font = Enum.Font.Gotham
             playerButton.TextSize = 14
             playerButton.Parent = playerListFrame
@@ -366,77 +1277,80 @@ local function createESP(player)
     esp.Parent = player.Character:FindFirstChild("HumanoidRootPart")
     
     table.insert(espObjects, esp)
+
+    -- Agregar texto con el nombre del jugador
+    local nameEsp = Instance.new("BillboardGui")
+    nameEsp.Name = "nameESP"
+    nameEsp.Size = UDim2.new(0, 100, 0, 20)
+    nameEsp.AlwaysOnTop = true
+    nameEsp.StudsOffset = Vector3.new(0, 2, 0)
+    nameEsp.Parent = player.Character:FindFirstChild("Head")
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Size = UDim2.new(1, 0, 1, 0)
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.Text = player.Name
+    nameLabel.TextColor3 = Color3.new(1, 0, 0)
+    nameLabel.TextScaled = true
+    nameLabel.Parent = nameEsp
+
+    table.insert(espObjects, nameEsp)
 end
 
--- Función para crear Hitbox
-local function createHitbox(player)
-    if player == Players.LocalPlayer then return end
-    
-    local hitbox = Instance.new("SelectionBox")
-    hitbox.Name = "Hitbox"
-    hitbox.LineThickness = 0.02
-    hitbox.Color3 = Color3.new(0, 1, 0)
-    hitbox.Transparency = 0.5
-    hitbox.Adornee = player.Character:FindFirstChild("HumanoidRootPart")
-    hitbox.Parent = player.Character:FindFirstChild("HumanoidRootPart")
-    
-    table.insert(hitboxObjects, hitbox)
-end
-
--- Función para actualizar ESP y Hitbox
-local function updateVisuals()
-    -- Limpiar visuales existentes
+-- Función para actualizar ESP
+local function updateESP()
+    -- Limpiar ESP existente
     for _, obj in ipairs(espObjects) do
-        obj:Destroy()
-    end
-    for _, obj in ipairs(hitboxObjects) do
-        obj:Destroy()
+        if obj then
+            obj:Destroy()
+        end
     end
     espObjects = {}
-    hitboxObjects = {}
     
-    -- Crear nuevos visuales
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-            if espEnabled then
-                createESP(p)
-            end
-            if hitboxEnabled then
-                createHitbox(p)
+    -- Crear nuevo ESP
+    if espEnabled then
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                createESP(player)
             end
         end
     end
 end
 
--- Función para manejar Infinite Jump
-local function handleInfiniteJump()
-    UserInputService.JumpRequest:Connect(function()
-        if infiniteJumpEnabled and character and humanoid then
-            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+-- Funciones para Noclip
+local function startNoclip()
+    Clip = false
+    local function Nocl()
+        if Clip == false and game.Players.LocalPlayer.Character ~= nil then
+            for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+                if v:IsA('BasePart') and v.CanCollide then
+                    v.CanCollide = false
+                end
+            end
         end
-    end)
+        wait(0.21)
+    end
+    Noclip = game:GetService('RunService').Stepped:Connect(Nocl)
+end
+
+local function stopNoclip()
+    if Noclip then 
+        Noclip:Disconnect() 
+    end
+    Clip = true
+    
+    -- Restaurar colisiones
+    if game.Players.LocalPlayer.Character then
+        for _, v in pairs(game.Players.LocalPlayer.Character:GetDescendants()) do
+            if v:IsA('BasePart') then
+                v.CanCollide = true
+            end
+        end
+    end
 end
 
 local function initializeFlight()
     local gui = createNewGui()
-
-    gui.flightButton.MouseButton1Click:Connect(function()
-        if flying then
-            stopFlying()
-            gui.flightButton.Text = "Activar Vuelo"
-            gui.flightButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-        else
-            startFlying()
-            gui.flightButton.Text = "Desactivar Vuelo"
-            gui.flightButton.BackgroundColor3 = Color3.fromRGB(215, 0, 0)
-        end
-    end)
-
-    gui.disableButton.MouseButton1Click:Connect(function()
-        stopFlying()
-        gui.flightButton.Text = "Activar Vuelo"
-        gui.flightButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-    end)
 
     gui.teleportButton.MouseButton1Click:Connect(function()
         if selectedPlayer and selectedPlayer.Character then
@@ -454,15 +1368,7 @@ local function initializeFlight()
 
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if not gameProcessed and input.KeyCode == Enum.KeyCode.F then
-            if flying then
-                stopFlying()
-                gui.flightButton.Text = "Activar Vuelo"
-                gui.flightButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-            else
-                startFlying()
-                gui.flightButton.Text = "Desactivar Vuelo"
-                gui.flightButton.BackgroundColor3 = Color3.fromRGB(215, 0, 0)
-            end
+            onJumpRequest()
         end
     end)
 
@@ -470,10 +1376,93 @@ local function initializeFlight()
         character = newCharacter
         humanoid = character:WaitForChild("Humanoid")
         humanoidRootPart = character:WaitForChild("HumanoidRootPart")
-        stopFlying()
-        gui.flightButton.Text = "Activar Vuelo"
-        gui.flightButton.BackgroundColor3 = Color3.fromRGB(0, 120, 215)
-        handleInfiniteJump()
+        
+        -- Reconectar Infinite Jump si estaba activo
+        if infiniteJumpEnabled then
+            if jumpConnection then
+                jumpConnection:Disconnect()
+            end
+            
+            jumpConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if not gameProcessed and input.KeyCode == Enum.KeyCode.Space then
+                    while UserInputService:IsKeyDown(Enum.KeyCode.Space) and infiniteJumpEnabled do
+                        if character and humanoid and canJump then
+                            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+                            canJump = false
+                            task.wait(jumpCooldown)
+                            canJump = true
+                        end
+                        task.wait()
+                    end
+                end
+            end)
+        end
+        
+        -- Reconectar Click Teleport si estaba activo
+        if clickTeleportEnabled then
+            if clickConnection then
+                clickConnection:Disconnect()
+            end
+            
+            clickConnection = mouse.Button1Down:Connect(function()
+                if clickTeleportEnabled and character and humanoidRootPart then
+                    local targetPos = mouse.Hit.Position
+                    humanoidRootPart.CFrame = CFrame.new(targetPos + Vector3.new(0, 3, 0))
+                end
+            end)
+        end
+        
+        -- Reconectar Noclip si estaba activo
+        if noclipEnabled then
+            if Noclip then
+                Noclip:Disconnect()
+            end
+            
+            Noclip = RunService.Stepped:Connect(function()
+                if character and noclipEnabled then
+                    for _, part in pairs(character:GetDescendants()) do
+                        if part:IsA("BasePart") then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        end
+        
+        -- Desactivar Fly si estaba activo
+        if flyEnabled then
+            flyEnabled = false
+            if flyConnection then
+                flyConnection:Disconnect()
+                flyConnection = nil
+            end
+        end
+        
+        -- Reconectar WalkSpeed si estaba activo
+        if walkSpeedEnabled then
+            if walkSpeedConnection then
+                walkSpeedConnection:Disconnect()
+            end
+            
+            walkSpeedConnection = RunService.Heartbeat:Connect(function()
+                if character and humanoid then
+                    humanoid.WalkSpeed = walkSpeedValue
+                end
+            end)
+        end
+        
+        -- Reconectar JumpPower si estaba activo
+        if jumpPowerEnabled then
+            if jumpPowerConnection then
+                jumpPowerConnection:Disconnect()
+            end
+            
+            jumpPowerConnection = RunService.Heartbeat:Connect(function()
+                if character and humanoid then
+                    humanoid.JumpPower = jumpPowerValue
+                end
+            end)
+        end
     end)
 
     Players.PlayerAdded:Connect(function()
@@ -491,42 +1480,7 @@ local function initializeFlight()
         espEnabled = not espEnabled
         gui.espButton.Text = "ESP: " .. (espEnabled and "Activado" or "Desactivado")
         gui.espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(0, 120, 215)
-        updateVisuals()
-    end)
-
-    -- Hitbox Button Handler
-    gui.hitboxButton.MouseButton1Click:Connect(function()
-        hitboxEnabled = not hitboxEnabled
-        gui.hitboxButton.Text = "Hitbox: " .. (hitboxEnabled and "Activado" or "Desactivado")
-        gui.hitboxButton.BackgroundColor3 = hitboxEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(0, 120, 215)
-        updateVisuals()
-    end)
-
-    -- Infinite Jump
-    gui.jumpButton.MouseButton1Click:Connect(function()
-        infiniteJumpEnabled = not infiniteJumpEnabled
-        gui.jumpButton.Text = "Infinite Jump: " .. (infiniteJumpEnabled and "ON" or "OFF")
-        gui.jumpButton.BackgroundColor3 = infiniteJumpEnabled and Color3.fromRGB(0, 180, 0) or Color3.fromRGB(0, 120, 215)
-    end)
-
-    -- Inicializar Infinite Jump
-    handleInfiniteJump()
-
-    -- Actualizar visuales cuando los jugadores entran/salen
-    Players.PlayerAdded:Connect(function(player)
-        player.CharacterAdded:Connect(function()
-            wait(1) -- Esperar a que el personaje cargue completamente
-            updateVisuals()
-        end)
-    end)
-
-    Players.PlayerRemoving:Connect(updateVisuals)
-
-    -- Actualización periódica de visuales
-    RunService.Heartbeat:Connect(function()
-        if espEnabled or hitboxEnabled then
-            updateVisuals()
-        end
+        updateESP()
     end)
 
     -- Aimbot
@@ -549,4 +1503,119 @@ local function initializeFlight()
     end)
 end
 
-initializeFlight()
+-- Key System
+local function createKeySystem()
+    local correctKey = "OP5136$#HKPÑL%#!"
+    
+    local keyGui = Instance.new("ScreenGui")
+    keyGui.Name = "KeySystem"
+    keyGui.ResetOnSpawn = false
+    keyGui.Parent = player.PlayerGui
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 300, 0, 200)
+    mainFrame.Position = UDim2.new(0.5, -150, 0.5, -100)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = keyGui
+
+    -- Título
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 30)
+    titleBar.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+
+    local titleText = Instance.new("TextLabel")
+    titleText.Size = UDim2.new(1, 0, 1, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "SigmaHub | Key System"
+    titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextSize = 14
+    titleText.Parent = titleBar
+
+    -- Input de la Key
+    local keyInput = Instance.new("TextBox")
+    keyInput.Size = UDim2.new(0.8, 0, 0, 30)
+    keyInput.Position = UDim2.new(0.1, 0, 0.3, 0)
+    keyInput.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    keyInput.Text = ""
+    keyInput.PlaceholderText = "Enter Key"
+    keyInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+    keyInput.Font = Enum.Font.GothamSemibold
+    keyInput.TextSize = 14
+    keyInput.Parent = mainFrame
+
+    -- Botón de Submit
+    local submitButton = Instance.new("TextButton")
+    submitButton.Size = UDim2.new(0.4, 0, 0, 30)
+    submitButton.Position = UDim2.new(0.3, 0, 0.6, 0)
+    submitButton.BackgroundColor3 = Color3.fromRGB(100, 60, 180)
+    submitButton.Text = "Submit"
+    submitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    submitButton.Font = Enum.Font.GothamSemibold
+    submitButton.TextSize = 14
+    submitButton.Parent = mainFrame
+
+    -- Status Label
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(0.8, 0, 0, 20)
+    statusLabel.Position = UDim2.new(0.1, 0, 0.8, 0)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = ""
+    statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+    statusLabel.Font = Enum.Font.GothamSemibold
+    statusLabel.TextSize = 12
+    statusLabel.Parent = mainFrame
+
+    -- Hacer la interfaz arrastrable
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+
+    titleBar.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    -- Funcionalidad del botón
+    submitButton.MouseButton1Click:Connect(function()
+        if keyInput.Text == correctKey then
+            statusLabel.Text = "Correct Key! Loading..."
+            statusLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            wait(1)
+            keyGui:Destroy()  -- Esto destruye/cierra la interfaz del key system
+            createNewGui() -- Crear la interfaz principal
+        else
+            statusLabel.Text = "Invalid Key!"
+            statusLabel.TextColor3 = Color3.fromRGB(255, 0, 0)
+            wait(1)
+            statusLabel.Text = ""
+        end
+    end)
+end
+
+-- Iniciar con el Key System en lugar de la interfaz principal
+createKeySystem()
